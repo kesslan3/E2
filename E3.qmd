@@ -1,0 +1,29 @@
+---
+title: "E3"
+format: pdf
+editor: visual
+---
+
+# E3:
+
+## Preparation: Install Git
+
+Shell: program that runs other programs and it looks like an R console. RStudio has a shell terminal that is right next to the R console –\>tab Terminal.
+
+```{r}
+
+```
+
+## Exercise A: Introduce myself using the Terminal
+
+```{r}
+
+git config --global user.name "kesslan3"   # proper name or a pseudonym
+git config --global user.email "kesslan3@students.zhaw.ch" # your (student) mailadress 
+```
+
+Initialize Git Version Control
+
+Opening last weeks
+
+igit init

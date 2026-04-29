@@ -1,0 +1,520 @@
+---
+title: "E2"
+format: pdf
+editor: visual
+---
+
+# E2: DEMO - Time Difference between subsequent Positions
+
+**Difftime function:** Assume we want to calculate the timelag between subsequent positions. To achieve this we can use the function `difftime()` combined with `lead()` from `dplyr`. Let’s look at thgit initese functions one by one.
+
+-   Distanz zwischen zwei Zeitpunkten im Posixct- Format. Hier werden die Zeitpunkte later und now genannt und mit difftime die Unterschiede berechnet.
+
+-   Man wandelt es meist in numeric um, damit es einfacher ist, zb in 4500s. Das macht man mit der Funktion difftime_secs().
+
+```{r}
+#difftime takes two POSIXct values.
+
+now <- as.POSIXct("2024-04-26 10:20:00")
+later <- as.POSIXct("2024-04-26 11:35:00")
+
+later
+
+
+time_difference <- difftime(later, now)
+time_difference
+
+#You can also specify the unit of the output.
+time_difference <- difftime(later, now, units = "secs")
+time_difference
+
+#difftime returns an object of the class difftime.
+class(time_difference)
+## [1] "difftime"
+
+str(time_difference)
+##  'difftime' num 4500
+##  - attr(*, "units")= chr "secs"
+
+
+```
+
+However in our case, numeric values would be more handy than the class difftime. So we’ll wrap the command in as.numeric():
+
+```{r}
+time_difference <- as.numeric(difftime(later, now, units = "secs"))
+
+str(time_difference)
+##  num 4500
+class(time_difference)
+## [1] "numeric"
+
+```
+
+In fact, we will use this exact operation multiple times, so let’s create a function for this:
+
+```{r}
+difftime_secs <- function(later, now){
+    as.numeric(difftime(later, now, units = "secs"))
+}
+```
+
+## Lead() /Lag()
+
+`lead()` and `lag()` return a vector of the same length as the input, just offset by a specific number of values (default is 1). Consider the following sequence.
+
+We can now run `lead()` and `lag()` on this sequence to illustrate the output. `n =`specifies the offset, `default =` specifies the default value used to “fill” the emerging “empty spaces” of the vector. This helps us performing operations on subsequent values in a vector (or rows in a table).
+
+-   Werte innerhalb eines Vektors oder einer Spalte zeitlich bzw. positionsmässig zu verschieben. Sie geben die gleiche Länge zurück wie ursprünglich, aber verschoben.
+
+-   lag() greift auf vorherige Werte zu
+
+-   Lead() greift auf nachfolgende Werte zu
+
+-   n = wie viele Positionen werden verschoben? default= Welcher Wert die entstehenden Lücken füllt, zb NA oder hier 1?)
+
+-   Was nützt es uns? man kann Beziehungen zwischen aufeinanderfolgenden Daten herstellen, ohne dass man Schleifen schreiben muss.
+
+Dieses Beispiel 1-10. Bei Lead wird das vorherige geholt–\> hier NA am Schluss. Bei Lead 2 mal wird 2 mal die vorherigen geholt, also NA zu Beginn. Den Default kann man auch ändern, dann zeigt es kein NA, sondern 0.
+
+```{r}
+numbers <- 1:10
+numbers
+
+library("dplyr")
+lead(numbers)
+
+lead(numbers, n = 2)
+lag(numbers)
+
+lag(numbers, n = 5)
+
+lag(numbers, n = 5, default = 0)
+```
+
+Beim übergang vom einen tier ins andere (Hans und Klara) wird ein falscher Wert entstehen, da wir nicht gruppiert haben (ein negativer Zeitunterschied), deshalb gruooieren wird das ganze dann noch.
+
+## mutate()
+
+Using the above functions (`difftime()` and `lead()`), we can calculate the time lag, that is, the time difference between consecutive positions. We will try this on a dummy version of our wild boar dataset.
+
+```{r}
+wildschwein <- tibble(       # aka data.frame
+    TierID = rep(c("Hans", "Klara"), each = 5),
+    DatetimeUTC = rep(as.POSIXct("2015-01-01 00:00:00", tz = "UTC") + 0:4 * 15 * 60, 2)
+)
+
+wildschwein
+
+```
+
+If we are interested to **calculate the speed** travelled between subsequent locations, we need to calculate the elapsed time first. Since R does most operations in a vectorized manner, we can use `difftime_secs` on the entire column `DatetimeUTC` of our dataframe `wildschwein` and store the output in a new column.
+
+```{r}
+
+now <- wildschwein$DatetimeUTC
+later <- lead(now)
+
+# View(wildschwein)
+
+wildschwein$timelag <- difftime_secs(later, now)
+
+wildschwein
+```
+
+However, we have an issue at the transition between the two animals. We can overcome this issue using dplyr’s `mutate` with `group_by`. **If we use `mutate`, we do not use the `$` notation!**
+
+-   The output is equivalent, we need `group_by` as well.
+
+```{r}
+# note the lack of "$"
+wildschwein <- mutate(wildschwein, timelag = difftime_secs(lead(DatetimeUTC), DatetimeUTC))
+
+wildschwein
+```
+
+## group_by()
+
+To distinguish groups in a dataframe, we need to specify these using `group_by()`.
+
+Jetzt wird der letzte Wert pro Tier dann als NA angezeigt, weil eine Berechnung des Übergangs zwischen den Tieren keinen Sinn ergibt.
+
+```{r}
+# again, note the lack of "$"
+wildschwein <- group_by(wildschwein, TierID)
+```
+
+After adding this grouping variable, calculating the `timelag` automatically accounts for the individual trajectories.
+
+```{r}
+# again, note the lack of "$"
+wildschwein <- mutate(wildschwein, timelag = difftime_secs(lead(DatetimeUTC), DatetimeUTC))
+
+wildschwein
+```
+
+## Piping
+
+Piping can simplify the process and help us write our sequence of operations in a manner as we would explain them to another human being.
+
+In order to make code readable in a more human-friendly way, we can use the piping command (`|>` or `%>%`, it does not matter which).
+
+```{r}
+wildschwein |>                                            # Take wildschwein...
+    group_by(TierID) |>                                   # ...group it by TierID
+    mutate(
+        timelag = difftime_secs(lead(DatetimeUTC), DatetimeUTC)# Caculate difftime
+        )
+```
+
+## summarise()
+
+If we want to summarise our data and get metrics *per animal*, we can use the `dplyr`function `summarise()`. In contrast to `mutate()`, which just adds a new column to the dataset, `summarise()` “collapses” the data to one row per individual (specified by `group_by`).
+
+```{r}
+summarise(wildschwein, mean = mean(timelag, na.rm = TRUE))
+```
+
+# E2: Exercise A
+
+## Task 1: Import your Data
+
+& Data Frame daraus machen.
+
+-   es ist bereits im richtigen Koordinatensystem EPSG 2056
+
+-   Coordinates sind stores in N und E columns.
+
+-   Sabi, Rosa, Ruth sind die Namen der Tiere
+
+-   Man muss das Zeitformat als Posixct machen
+
+```{r}
+library("readr")
+library("sf")
+library("tidyverse")
+library("dplyr")
+
+
+wildschwein_BE <- read_delim("Data/wildschwein_BE_2056.csv", ",")
+
+wildschwein_BE <- st_as_sf(wildschwein_BE, coords = c("E", "N"), crs = 2056)
+
+head(wildschwein_BE)
+str(wildschwein_BE)
+
+wildschwein_BE$DatetimeUTC <- as.POSIXct(wildschwein_BE$DatetimeUTC, tz = "UTC")
+
+```
+
+## Task 2: Getting an Overview
+
+Calculate the time difference between subsequent rows as described in the demo with lead() and difftime_secs() in a new column timelag.
+
+Du solltest die Zeitdifferenz **pro Tier (`TierID`)** berechnen und die Daten vorher **zeitlich sortieren**.
+
+-   arrange: Reihenfolge bestimmen
+
+-   group by nach TierID
+
+-   timelag: Differenz in sekunden –\> timelag Spalte
+
+```{r}
+difftime_secs <- function(later, now){
+    as.numeric(difftime(later, now, units = "secs"))
+}
+
+wildschwein_BE <- wildschwein_BE %>%
+  arrange(TierID) %>%   # nach Tier
+  mutate(
+    timelag = difftime_secs(lead(DatetimeUTC), DatetimeUTC)
+  ) 
+
+```
+
+-   How many individuals were tracked? 3 Tiere
+
+-   For how long were the individual tracked? Are there gaps? Zu Unterschiedlichen Zeiten
+
+-   Were all individuals tracked concurrently or sequentially? also überlappend oder nacheinander? (überlappend: 2014 und 2015)
+
+-   What is the temporal sampling interval between the locations? 15Min
+
+```{r}
+library("tidyverse")
+wildschwein_BE
+
+length(unique(wildschwein_BE$TierName))
+
+
+wildschwein_BE |>
+  group_by(TierID) |>
+  summarise(
+    start = min(DatetimeUTC),
+    end = max(DatetimeUTC),
+    duration = max(DatetimeUTC) - min(DatetimeUTC)
+  )
+
+wildschwein_BE %>% 
+    st_drop_geometry() %>% 
+    group_by(TierName) %>%
+    summarise(duration_sec = sum(timelag, na.rm = TRUE), 
+               duration_h = sum(timelag, na.rm = TRUE)/3600,
+               from = min(DatetimeUTC, na.rm = TRUE),
+               to = max(DatetimeUTC, na.rm = TRUE))
+
+library(dplyr)
+
+wildschwein_BE %>%
+  slice_max(timelag, n = 1)
+
+wildschwein_BE %>%
+  st_drop_geometry() %>% 
+  group_by(TierName) %>%
+  summarise(sum_gaps_1h = sum(timelag > 3600, na.rm = TRUE),
+            sum_gaps_2h = sum(timelag > 7200, na.rm = TRUE)) # Anzahl Zeitschritte > 1h
+
+library(tidyverse)
+
+ggplot(wildschwein_BE, aes(x= DatetimeUTC, y = TierName)) +
+geom_line()
+
+paste("Im Durchschnitt", round(mean(wildschwein_BE$timelag, na.rm = TRUE)/60, 0), "Minuten")
+
+paste("Im Median", round(median(wildschwein_BE$timelag, na.rm = TRUE)/60, 0), "Minuten")
+```
+
+## Task 3: Distance between locations
+
+```{r}
+later <- lag(wildschwein_BE$geometry)
+now <- wildschwein_BE$geometry
+
+
+distance<-st_distance(later, now, by_element = TRUE)  # by_element must be set to TRUE
+
+distance_by_element <- function(later, now){
+  as.numeric(
+    st_distance(later, now, by_element = TRUE)
+  )
+}
+```
+
+Use this function to create a new column named steplength with the distance between locations.
+
+```{r}
+wildschwein_BE$steplength <- distance_by_element(later, now)
+head(wildschwein_BE)
+
+```
+
+### Deriving speed
+
+Calculate the animals’ **speed** based on steplength and the timelag (from the last task).
+
+```{r}
+wildschwein_BE$speed <- round(wildschwein_BE$steplength/wildschwein_BE$timelag, 4)
+
+head(wildschwein_BE)
+```
+
+### Visualize / Plausibility Check
+
+It’s important to repeatedly **visualize our results**, to make sure these are plausible. This is much simpler if we just look at a small sample of our dataset. We can use head(100) to extract the first 100 rows.
+
+```{r}
+wildschwein_sample <- wildschwein_BE %>%
+  filter(TierName == "Sabi") %>%
+  head(100)
+
+library(tmap)
+tmap_mode("view")
+
+m <- tm_shape(wildschwein_sample) + 
+  tm_dots()
+
+print(tmap_leaflet(m))
+tmap_save(m, "Week_2_Karte.html")
+```
+
+## Exercise B
+
+In preparation, you’ve read the paper by Laube and Purves (2011). In this paper, the authors **analyse speed at different scales and compare these different values**. Let’s conceptually reconstruct one of the experiments the authors conducted.
+
+The figure shows how speed was calculated in the first of three scales. Do you notice how their method differs to how we calculated speed? We calculated the speed for a specific sample to be the distance travelled to the next sample devided by the according time difference. Laube and Purves (2011) use the distance travelled from the previous sample to the next sample (and the according time difference).
+
+To reproduce this experiment, we will use a new wild boar dataset with following characteristics:
+
+-   Small number of samples (200 locations)
+-   Only one individual (Caro)
+-   A constant sampling interval (60s)
+
+This last aspect is important, since we would otherwise have to deal with varying sampling intervals, which would greatly complicate things. Download this dataset from moodle (caro60.csv). Import it just like you imported the other wild boar data and save it to a new variable named caro (note that the locations are stored in EPSG 2056).
+
+We will need the following two functions from Exercise A:
+
+```{r}
+library("readr")
+library("sf")
+library("dplyr")
+
+difftime_secs <- function(later, now){
+    as.numeric(difftime(later, now, units = "secs"))
+}
+
+distance_by_element <- function(later, now){
+  as.numeric(
+    st_distance(later, now, by_element = TRUE)
+  )
+}
+```
+
+### Import Data
+
+We can then import the data. We can **discard all columns with the exception of DatetimeUTC** with `select` (see below).
+
+```{r}
+caro <- read_delim("Data/caro60.csv", ",") %>%
+  st_as_sf(coords = c("E","N"), crs = 2056) %>%
+  select(DatetimeUTC)
+```
+
+### Calculate speed at scale 1
+
+In our first scale, we will assume a **sampling window of 120 seconds**. This conveniently means that for every location, you can use the previous and next location to calculate speed. Try to implement this in R.
+
+3 neue Spalten gemacht am Schluss!
+
+```{r}
+now = lag(caro$DatetimeUTC)
+later = lead(caro$DatetimeUTC)
+
+now[1:10]
+later[1:10]
+
+caro <- mutate(caro, 
+               timelag = difftime_secs(later, now))
+
+head(caro)
+
+now = lag(caro$geometry)
+later = lead(caro$geometry)
+
+now[1:10]
+later[1:10]
+
+caro <- mutate(caro, 
+               steplength = round(distance_by_element(later, now), 1))
+
+caro <- mutate(caro, 
+               speed = round(steplength/timelag, 3))
+
+head(caro)
+
+```
+
+### Calculate speed at scale 2
+
+To compare the effect of different sampling intervals, Laube and Purves (2011) calculated speed at different scales (i.e. different sampling windows $w$).
+
+In the previous task, we assumed a $w = 120$. In this task, try to implement $w = 240$ (see Figure 8.2), which means using an **offset of 2**.
+
+-   Tip: Use the `n = parameter` in `lead/lag` to increase the offset.
+-   Store values **timelag, steplength and speed** in the columns `timelag2`, `steplength2` and `speed2` to distinguish them from the values from scale 1
+
+```{r}
+head(caro)
+
+now = lag(caro$DatetimeUTC, n=2)
+later = lead(caro$DatetimeUTC, n=2)
+
+now[1:10]
+later[1:10]
+
+caro <- mutate(caro, 
+               timelag2 = difftime_secs(later, now))
+
+now = lag(caro$geometry, n=2)
+later = lead(caro$geometry, n=2)
+
+caro <- mutate(caro, 
+               steplength2 = round(distance_by_element(later, now), 1))
+
+caro <- mutate(caro, 
+               speed2 = round(steplength2/timelag2, 3))
+
+head(caro)
+
+```
+
+### Calculate speed at scale 3
+
+Redo the previous task with $w = 480s$ (offset of n = 4)
+
+```{r}
+now = lag(caro$DatetimeUTC, n=4)
+later = lead(caro$DatetimeUTC, n=4)
+
+caro <- mutate(caro, 
+               timelag3 = difftime_secs(later, now))
+
+now = lag(caro$geometry, n=4)
+later = lead(caro$geometry, n=4)
+
+caro <- mutate(caro, 
+               steplength3 = round(distance_by_element(later, now), 1))
+
+caro <- mutate(caro, 
+               speed3 = round(steplength3/timelag3, 3))
+head(caro)
+
+```
+
+### Compare speed across scales
+
+We now have a dataframe with three different speed values per sample, corresponding to the different scales / sampling windows ($w1 = 120s, w2 = 240s, w3 = 480s$). It would now be interesting to compare these measurements and see our results correspond to those of Laube and Purves (2011). In their experiments, the authors observe:
+
+-   A steady decrease in median speed as the temporal analysis scale increases;
+-   A decrease in the overall variance in speed as the temporal scale increases;
+-   Lower minimum values at the shortest temporal scales;
+
+The authors visualize these observations using box plots. To to the same, we need to process our data slightly. Currently, our data looks like this:
+
+```{r}
+head(caro |> 
+  st_drop_geometry() |> 
+  select(DatetimeUTC, speed, speed2, speed3))
+
+```
+
+We can make a box plot of a single column using ggplot2:
+
+```{r}
+library(ggplot2)
+
+ggplot(caro, aes(y = speed)) + 
+    # we remove outliers to increase legibility, analogue
+  # Laube and Purves (2011)
+  geom_boxplot(outliers = FALSE)
+```
+
+However, if we want to **compare speed with speed2 and speed3**, we need need a ***long table*** rather than wide one (which is what we currently have). To make our table long, we can use the function `pivot_longer` from tidyr:
+
+```{r}
+library(tidyr)
+
+# before pivoting, let's simplify our data.frame
+caro2 <- caro |> 
+  st_drop_geometry() |> 
+  select(DatetimeUTC, speed, speed2, speed3)
+
+caro_long <- caro2 |> 
+  pivot_longer(c(speed, speed2, speed3))
+  
+head(caro_long)
+
+ggplot(caro_long, aes(name, value)) +
+  # we remove outliers to increase legibility, analogue
+  # Laube and Purves (2011)
+  geom_boxplot(outliers = FALSE)
+```

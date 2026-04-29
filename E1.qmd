@@ -1,0 +1,171 @@
+---
+title: "Week 1"
+format: pdf
+editor: visual
+---
+
+# **Week 1:**
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(tidyr)
+library(sf)
+library(terra)
+library(tmap)
+library(zoo)
+library(units)
+library(plotly)
+library(patchwork)
+
+```
+
+## **Task 1: Import Data**
+
+```{r}
+wildschwein<-read_delim("data/wildschwein_BE.csv")
+
+```
+
+## Task 2: Explore Data
+
+Unconstrained space model: Tiernamen mit ID und CollarID und ihre Koordinatenpunkte zu einer gewissen Zeit (Datum, Zeit)
+
+Scatterplot of the Data
+
+```{r}
+library(ggplot2)
+
+ggplot(wildschwein, aes(x = Long, y = Lat, color = TierID)) +
+  geom_point()
+```
+
+### Handling Spatial Data
+
+Wir können nicht immer nur mit Dataframes arbeiten, hier schon, weil es nur die Koordinaten sind auf X und Y, aber sonst brauchen wir ein Format, das Spatial ist. Dafür machen wir Vektordaten.
+
+-   neuer Vektordatensatz
+
+-   Funktion st_as_sf
+
+-   Koordinaten
+
+-   Koordinaten-Referenz-System (EPSG Code <http://epsg.io/>)
+
+```{r}
+library("sf")
+
+wildschwein_sf <- st_as_sf(wildschwein,
+    coords = c("Long", "Lat"),
+    crs = 4326
+)
+
+is.data.frame(wildschwein_sf)
+```
+
+Es sind jetzt Punkte, die aus den Koordinaten gebildet wurden und zusätzliche Metadaten (Geometry type, Dimension, Bounding Box, Geodetic CRS. Ist immer noch ein Dataframe und alles was wir mit Dataframes machen können, kann man auch mit den Vektordaten machen.
+
+-   Ein Sf Objekt hat immer eine Geometry (Point, Line, Polygone) und kennt das Koordinatensystem
+
+### Overwrite the old Data Frame and start working with the new sf one:
+
+```{r}
+wildschwein <- st_as_sf(wildschwein,
+    coords = c("Long", "Lat"),
+    crs = 4326
+)
+
+remove(wildschwein_sf)
+# we can remove this sf object, since it just eats up our memory
+```
+
+## Task 3: Project Data from WGS84
+
+Wir können nun die Daten mit dem System WGS84 (LAT und LONG) ins CH System CRS CH1903+LV95 projiezieren. Die Points sehen anders aus! Man muss das System angeben!
+
+```{r}
+
+wildschwein_lv95 <- st_transform(wildschwein, 2056)
+
+wildschwein
+```
+
+### Calculate Convex Hull: Hülle berechnen
+
+mit st_convex_hull(): Die kleinste konvexe Fläche, die alle Punkte umschliesst wie ein Gummiband. Hier jetzt alle Koordinatenpunkte der Rehe. Wir wollen aber die Einzelnen Flächen der verschiedenen Rehe, weshalb wir zuerst noch gruppieren.
+
+```{r}
+library("dplyr")
+
+wildschwein_grouped <- group_by(wildschwein_lv95, TierID)
+
+wildschwein_grouped
+```
+
+## Task 4: Plot spatial objects
+
+Jetzt wollen wir noch alle Punkte pro TierID in einem Multipoint Object. Vorher war es nur ein Point objekt, das hat nichts mit grouped zu tun, es ist einfach ein anderer Geometry Type, die es braucht für diese Funktion. Man sieht auch wenn man es ausführt, dass es unten anzeigt bei POINT: 51245 features and 4 fields, bei Multipoint zeigt es an: 3 features (3 Rehe) and 3 fields! Das ist das, was wir wollen.
+
+```{r}
+wildschwein_smry <- summarise(wildschwein_grouped)
+
+wildschwein_smry
+
+mcp <- st_convex_hull(wildschwein_smry)
+
+plot(mcp)
+```
+
+Jetzt haben wir für jedes Tier die Hülle aller GPS Punkte, die aufgezeichnet wurden.
+
+## Task 5: Making Maps with tmap
+
+Mit tmap kann man auch gut plotten und die Layers sind mit einem 1 verbunden, aber die Layer bestehen aus 2 Objekten, tm_shape() und tm\_\* object wo wir sagen, wie es visualisiert werden soll. Wir können mcp dazunehmen .
+
+```{r}
+library("tmap")
+
+tm_shape(wildschwein_lv95) +
+    tm_dots(fill = "TierName")+
+tm_shape(mcp) +
+  tm_borders(col = "red")
+
+```
+
+Mit tm_fill kann man noch die Flächen einfärben, während man mit tim_borders nur die Linien ausserhalb sieht.
+
+Ich möchte es noch schöner machen, damit die Punkte auf den MCP liegen, also umgekehrt und beides hinzufügen, also fill und borders.
+
+```{r}
+
+tm_shape(mcp) +
+  tm_borders(col = "black")+
+tm_shape(wildschwein_lv95) +
+    tm_dots(fill = "TierName")
+
+tm_shape(mcp) +
+  tm_fill(fill = "lightblue")+
+tm_shape(wildschwein_lv95) +
+    tm_dots(fill = "TierName")+
+ tm_shape(mcp) +
+    tm_borders(col = "black") 
+
+
+```
+
+## 6: Create an interactive Map
+
+```{r}
+
+tmap_mode("plot")
+
+tm_shape(mcp) +
+  tm_fill(fill = "lightblue")+
+tm_shape(wildschwein_lv95) +
+    tm_dots(fill = "TierName")+
+ tm_shape(mcp) +
+    tm_borders(col = "black") 
+```
+
+1.  As we’ve mentioned in the first Input, you can look up the EPSG codes under [epsg.io](http://epsg.io/).
