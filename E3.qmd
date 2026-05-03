@@ -23,7 +23,3 @@ git config --global user.email "kesslan3@students.zhaw.ch" # your (student) mail
 ```
 
 Initialize Git Version Control
-
-Opening last weeks
-
-igit init

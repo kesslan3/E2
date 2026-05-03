@@ -1,0 +1,42 @@
+---
+title: "got-1"
+editor: visual
+format: html
+warning: false
+message: false
+---
+
+# 
+
+```{r}
+
+## Quarto kennenlernen Import data and Map it.Man kann Figures referenzieren mit @fig_scatterplot.
+
+## Daten & Plot
+
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(ggrepel)
+
+screentimes <- read_csv("GOT_screentimes_1.csv")
+
+screentimes_high <- top_n(screentimes, 10, screentime)
+```
+
+Figure:
+
+```{r}
+#| label: fig_scatterplot
+#| fig-cap: "Screentime vs Episodes in Game of Thrones"
+
+ggplot(screentimes, aes(screentime, episodes)) +
+  geom_point() +
+  geom_text_repel(
+    data = screentimes_high,
+    aes(label = name),
+    min.segment.length = 0
+  )
+```
+
+Wie in \@fig_scatterplot gezeigt, haben einige Charaktere deutlich mehr Screentime als andere.
